@@ -1,0 +1,596 @@
+% Phase 2 handout -- RISC-V RV32I Datapath Components in Verilog
+% EEL 4768 Computer Architecture, Fall 2026
+%
+% NOTE TO INSTRUCTOR (delete before distributing, or keep as a LaTeX comment):
+% This handout is written to match phase_1.tex's structure and boxes. Every
+% port list, signal semantic, legality rule and don't-care condition below was
+% read directly out of the testbenches and the harness under
+% phase_2/source_test/ (config.py, grade_test.py, rtl/alu_tb.v, rtl/decoder_tb.v,
+% rtl/imm_tb.v, rtl/rf_bypass_tb.v, rtl/rf_no_bypass_tb.v) and out of the
+% Verilog rule checker in phase_2/docker/python-ece552/. Nothing here is
+% assumed. Eight items need your sign-off before this goes out:
+%
+%   1. RUBRIC / SCOPE MISMATCH (Section 2). phase_2/source_test/ grades FIVE
+%      testbenches -- 22 checks: 10 ALU ops, 9 decoder groups, imm, rf x2 --
+%      but the two Gradescope-facing graders (docker/submit.py and
+%      local/grade_project2.py) still only grade FOUR (alu_tb, imm_tb,
+%      rf_no_bypass_tb, rf_bypass_tb) at 3/4 = 0.75 each; neither one knows
+%      decoder_tb.v exists, and neither ships it. This handout assumes the
+%      decoder IS graded and prints 5 x 0.6. Either add the decoder grading
+%      block to both graders (assign_even_scores() repoints automatically) or
+%      cut Section 8 and the decoder row from the rubric.
+%
+%   2. FILENAMES. run_test.sh's error text tells students to submit
+%      "alu.v, decode.v and rf.v" -- it omits imm.v, and says decode.v while
+%      decoder_tb.v instantiates a module named `decoder'. docker/submit.py's
+%      presence check is ["alu.v", "imm.v", "rf.v", "project2.txt"]. This
+%      handout tells students decoder.v / module decoder. source_test collects
+%      by extension so the local run is unaffected either way, but please make
+%      run_test.sh's message and submit.py's list agree with Section 1.
+%
+%   3. ecall VS ebreak. Phase 1 requires every program to terminate with
+%      `ecall'. decoder_tb.v puts 32'h00000073 (ecall) in the ILLEGAL group and
+%      makes `ebreak' (32'h00100073) the only legal SYSTEM instruction, driving
+%      o_halt. As written a phase-1 program cannot run on a phase-2 decoder.
+%      Pick one convention before phase 3 connects them.
+%
+%   4. decoder_tb.v's header comment says JAL/branch operand selects are
+%      "unconstrained", but the code has care_op_sel = uses_alu | uses_cmp,
+%      and uses_cmp is branches -- so branches ARE checked and must drive
+%      o_op1_sel = 0 and o_op2_sel = 0. Section 8 documents the code's actual
+%      behavior. Please fix the comment (or the code) so they agree.
+%
+%   5. project2.txt. Both Gradescope graders nag for a `project2.txt' inherited
+%      from the UW-Madison parent repo. Nothing in this course asks for it and
+%      this handout does not mention it. Drop the check or define the file.
+%
+%   6. THE STYLE CHECKER IS NOT IN THE LOCAL LOOP. docker/submit.py runs
+%      `ece552 validate -w *.v' fail-closed -- a violation scores 0 before
+%      iverilog ever runs -- but source_test/ never runs it. A student can go
+%      22/22 locally and score 0 on submission. Section 4 warns them and tells
+%      them to run it by hand; consider wiring it into run_test.sh instead.
+%      Separately, validators/operator_validator.py's _shift_illegal() has a
+%      stray `print(amount.kind)' debug line that leaks onto stdout.
+%
+%   7. NO SKELETONS EXIST. Unlike phase 1 there is no phase_2/skeletons/. Every
+%      port name, width and direction in Sections 5-8 was reverse-engineered
+%      from the testbenches' instantiations. If you ship skeletons, diff them
+%      against these tables first.
+%
+%   8. phase_2/submission/ (run_test.sh's default submission directory) is not
+%      in the repository. Students have to create it, which Section 9 says.
+
+\documentclass[11pt]{article}
+
+\usepackage[letterpaper,margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{caption}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc}
+\usepackage{listings}
+\usepackage[most]{tcolorbox}
+\usepackage{fancyhdr}
+\usepackage{parskip}
+\usepackage[colorlinks=true,linkcolor=blue!50!black,urlcolor=blue!50!black]{hyperref}
+
+\setlist[itemize]{topsep=2pt,itemsep=2pt,parsep=0pt}
+\setlist[enumerate]{topsep=2pt,itemsep=2pt,parsep=0pt}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  frame=single,
+  breaklines=true,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  tabsize=4,
+  backgroundcolor=\color{black!3}
+}
+
+\tcbuselibrary{skins,breakable}
+
+\newtcolorbox{important}{
+  colback=red!5!white, colframe=red!55!black, breakable,
+  fonttitle=\bfseries, title=Note
+}
+\newtcolorbox{clarification}{
+  colback=blue!5!white, colframe=blue!45!black, breakable,
+  fonttitle=\bfseries, title=Clarification
+}
+\newtcolorbox{pitfall}{
+  colback=orange!8!white, colframe=orange!65!black, breakable,
+  fonttitle=\bfseries, title=Common Pitfall
+}
+\newtcolorbox{worked}{
+  colback=green!5!white, colframe=green!35!black, breakable,
+  fonttitle=\bfseries, title=Verilog Sketch
+}
+\newtcolorbox{example}{
+  colback=green!5!white, colframe=green!35!black, breakable,
+  fonttitle=\bfseries, title=Breakdown
+}
+
+\setlength{\headheight}{14pt}
+\emergencystretch=1.5em
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{EEL 4768 -- Computer Architecture}
+\fancyhead[R]{Phase 2: RV32I Module Design}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\title{\vspace{-1.5cm}\textbf{Phase 2}\\[2pt]\Large RISC-V RV32I Module Design in Verilog}
+\author{EEL 4768 Computer Architecture \\ Fall 2026}
+\date{}
+
+\begin{document}
+\maketitle
+\thispagestyle{fancy}
+\vspace{-1cm}
+
+\section*{Learning Objectives}
+By the end of this phase you should be able to:
+\begin{itemize}
+  \item Write structural and dataflow Verilog for both combinational and sequential logic.
+  \item Build the four initial blocks detailed in this phase.
+  \item Debug your own hardware designs to fully test them, considering all possible inputs.
+\end{itemize}
+
+\begin{important}
+You must write your own Verilog test benches to verify your designs. An example test bench will be provided, as well as skeletons for each of the modules.
+\\
+You also should reference the RV32I reference card from webcourses for the instruction formats, opcodes, and immediate values.
+\end{important}
+
+\section{Submission}
+\begin{itemize}
+  \item \textbf{One submission per group.} You will manually
+        submit your work to Webcourses as a zip file. Students in multiple
+        groups, or not in a group by the time of submission, will receive
+        \textbf{no credit} for the submission.
+  \item \textbf{Files to submit}:
+\begin{lstlisting}
+alu.v
+imm.v
+rf.v
+decoder.v
+\end{lstlisting}
+        One module per file, and name the module the same as the filename. The testbenches instantiate modules
+        named \texttt{alu}, \texttt{imm}, \texttt{rf} and \texttt{decoder} by
+        name.
+\end{itemize}
+
+\begin{important}
+  Skeletons for each verilog file can be found in \texttt{phase\_2/skeletons/}. You must use these skeletons, or the grader will reject your submission.
+\end{important}
+
+\section{Grading Rubric}
+\label{sec:rubric}
+\begin{center}
+\begin{tabular}{@{}llr@{}}
+\toprule
+\textbf{Category} & \textbf{Testbench} & \textbf{Points} \\
+\midrule
+ALU                  & \texttt{alu\_tb.v}          & 0.75 \\
+Immediate Generator  & \texttt{imm\_tb.v}          & 0.75 \\
+\multirow[t]{2}{*}{Register File}
+                     & \texttt{rf.v (no bypass)} & 0.25 \\
+                     & \texttt{rf.v (with bypass)} & 0.5 \\
+Instruction Decoder  & \texttt{decoder\_tb.v}      & 0.75 \\
+\midrule
+\textbf{Total} & & \textbf{3.0} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Verilog Coding Rules}
+\label{sec:rules}
+Your submission is internally checked against a synthesizable subset. This is to insure your code will be synthasizable for future phases. The rules listed below will result in a 0 for the specific file.
+
+\begin{center}
+\begin{tabular}{@{}p{5.4cm}p{8.8cm}@{}}
+\toprule
+\textbf{Rule} & \textbf{What it means for you} \\
+\midrule
+No \texttt{*}, \texttt{/}, \texttt{\%}, \texttt{**}
+  & Arithmetic that does not synthesize cheaply. You do not need any of them
+    in this phase. \\
+No \texttt{===}, \texttt{!==}, \texttt{==?}, \texttt{!=?}
+  & Not synthesizable. Use \texttt{==} and \texttt{!=}. \\
+\textbf{Shifts only by a constant}
+  & \texttt{x << 3} is fine; \texttt{x << i\_op2[4:0]} is \emph{rejected}. See
+    Section~\ref{sec:alu}. \\
+No \texttt{if}/\texttt{else} in combinational logic
+  & \texttt{if}/\texttt{else} is only legal inside a clocked
+    \texttt{always @(posedge \dots)} block. For combinational logic use a
+    continuous \texttt{assign} with the \texttt{?:} operator, or a
+    \texttt{case} inside \texttt{always @(*)}. \\
+No procedural loops
+  & \texttt{for}, \texttt{while}, \texttt{repeat} and \texttt{do}/\texttt{while}
+    statements are rejected. To build something repetitive, use a
+    \texttt{generate} loop, or just write the instances out. \\
+No delays or waits
+  & \texttt{\#5}, \texttt{wait}, \texttt{disable} and friends are simulation
+    constructs. \\
+No system tasks
+  & \texttt{\$display}, \texttt{\$finish}, \texttt{\$stop}, \texttt{\$system},
+    \texttt{\$readmemh}/\texttt{\$readmemb},
+    \texttt{\$writememh}/\texttt{\$writememb} and all file I/O
+    (\texttt{\$fopen}, \texttt{\$fwrite}, \dots) are not allowed in your final submission. Only
+    constant functions such as \texttt{\$clog2} are allowed. \\
+No \texttt{`include}
+  & Not needed for importing other files. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\newpage
+
+\section{Part 1: ALU}
+\label{sec:alu}
+For the first part, you will be tasked with designing a 32-bit ALU following the RISC-V instruction set. This is a purely combinational ALU. Each ALU operation should be implemented manually. You cannot use +, -, <<, >>, or any other arithmetic operations inplace of the ALU operations. Follow the table below for how to implement each operation.
+
+\begin{center}
+  \begin{tabular}{@{}lp{7.8cm}@{}}
+    \toprule
+    \textbf{\texttt{Operation}} & \textbf{Implementation} \\
+    \texttt{Add / Sub} & \texttt{2's compliment Lookahead Carry Adder} \\
+    \texttt{SLL, SRL, SRA} & \texttt{Barrel Shifter} \\
+    \texttt{SLT / SLTU} & \texttt{Comparator} \\
+    \texttt{XOR, OR, AND} & \texttt{Bitwise Logic} \\
+    \bottomrule
+  \end{tabular}
+\end{center}
+
+Below lists the input and output signals, and what they represent.
+
+\begin{center}
+\begin{tabular}{@{}llp{8.4cm}@{}}
+\toprule
+\textbf{Port} & \textbf{Dir/Width} & \textbf{Meaning} \\
+\midrule
+\texttt{i\_opsel}    & in \ [2:0]  & Selects the operation (table below). \\
+\texttt{i\_sub}      & in          & With \texttt{i\_opsel = 3'b000}, subtract instead of add. Ignored for every other \texttt{i\_opsel}. \\
+\texttt{i\_unsigned} & in          & Comparisons are unsigned. Only used for branch comparisons. Unsigned arithmetic does not use this.\\
+\texttt{i\_arith}    & in          & With \texttt{i\_opsel = 3'b101}, shift right \emph{arithmetically} (replicate the sign bit) instead of logically. \\
+\texttt{i\_op1}      & in \ [31:0] & First operand. The value shifted, for shifts. \\
+\texttt{i\_op2}      & in \ [31:0] & Second operand. \textbf{For shifts, only \texttt{i\_op2[4:0]} is the shift amount}; the upper 27 bits are ignored. \\
+\texttt{o\_result}   & out [31:0]  & The operation's result. \\
+\texttt{o\_eq}       & out         & \texttt{i\_op1 == i\_op2}. \\
+\texttt{o\_slt}      & out         & \texttt{i\_op1 < i\_op2}, signed or unsigned per \texttt{i\_unsigned}. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\begin{tabular}{@{}llp{7.8cm}@{}}
+\toprule
+\textbf{\texttt{i\_opsel}} & \textbf{Operation} & \textbf{\texttt{o\_result}} \\
+\midrule
+\texttt{3'b000} & \textsc{add} / \textsc{sub} & \texttt{i\_op1 + i\_op2}, or \texttt{i\_op1 - i\_op2} when \texttt{i\_sub}. \\
+\texttt{3'b001} & \textsc{sll}                & \texttt{i\_op1} shifted left by \texttt{i\_op2[4:0]}. \\
+\texttt{3'b010} & \textsc{slt} & \texttt{i\_op1 < i\_op2}, signed. \\
+\texttt{3'b011} & \textsc{sltu} & \texttt{i\_op1 < i\_op2}, unsigned. \\
+\texttt{3'b100} & \textsc{xor}                & \texttt{i\_op1 \^{} i\_op2}. \\
+\texttt{3'b101} & \textsc{srl} / \textsc{sra} & \texttt{i\_op1} shifted right by \texttt{i\_op2[4:0]}, logically or (when \texttt{i\_arith}) arithmetically. \\
+\texttt{3'b110} & \textsc{or}                 & \texttt{i\_op1 | i\_op2}. \\
+\texttt{3'b111} & \textsc{and}                & \texttt{i\_op1 \& i\_op2}. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{clarification}
+\textbf{\texttt{o\_eq} and \texttt{o\_slt} are always checked.} Even if they are not directly used, it is important to always insure they output.
+\end{clarification}
+
+\newpage
+
+\section{Part 2: Immediate Generator}
+\label{sec:imm}
+Part 2 implements an immediate generator. This is acombinational block that extracts and sign-extends the immediate value from an 32-bit instruction word.
+
+\begin{center}
+\begin{tabular}{@{}llp{8.6cm}@{}}
+\toprule
+\textbf{Port} & \textbf{Dir/Width} & \textbf{Meaning} \\
+\midrule
+\texttt{i\_inst}      & in \ [31:0] & The full 32-bit instruction word. \\
+\texttt{i\_format}    & in \ [5:0]  & One-hot Selector for the instruction format. \\
+\texttt{o\_immediate} & out [31:0]  & The 32-bit sign-extended immediate. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{\texttt{i\_format}} & \textbf{Bit} & \textbf{Format} \\
+\midrule
+\texttt{6'b000001} & [0] & R \\
+\texttt{6'b000010} & [1] & I \\
+\texttt{6'b000100} & [2] & S \\
+\texttt{6'b001000} & [3] & B \\
+\texttt{6'b010000} & [4] & U \\
+\texttt{6'b100000} & [5] & J \\
+\bottomrule
+\end{tabular}
+\captionof{table}{The six instruction formats and the one-hot
+\texttt{i\_format} code that selects each.}
+\label{tab:imm}
+\end{center}
+
+\newpage
+
+\section{Part 3: Register File}
+\label{sec:rf}
+This part implements a 32-bit register file, or the registers of your processor. Reads are combinational, while writes are sequential.
+
+\begin{center}
+\begin{tabular}{@{}llp{8.2cm}@{}}
+\toprule
+\textbf{Port} & \textbf{Dir/Width} & \textbf{Meaning} \\
+\midrule
+\texttt{i\_clk}       & in          & Clock. Everything sequential happens on its rising edge. \\
+\texttt{i\_rst}       & in          & \textbf{Synchronous}, active high. Clears all 32 registers to zero. \\
+\texttt{i\_rs1\_raddr}& in \ [4:0]  & Read port 1 address. \\
+\texttt{o\_rs1\_rdata}& out [31:0]  & Read port 1 data. \\
+\texttt{i\_rs2\_raddr}& in \ [4:0]  & Read port 2 address. \\
+\texttt{o\_rs2\_rdata}& out [31:0]  & Read port 2 data.\\
+\texttt{i\_rd\_wen}   & in          & Write enable. \\
+\texttt{i\_rd\_waddr} & in \ [4:0]  & Write address. \\
+\texttt{i\_rd\_wdata} & in \ [31:0] & Write data. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The module takes \textbf{one parameter}, the bypass enable, and it must be the
+\emph{first} parameter --- the two testbenches instantiate it positionally, as
+\texttt{rf \#(0)} and \texttt{rf \#(1)}:
+
+\begin{lstlisting}[language=Verilog]
+module rf #(parameter BYPASS_EN = 0) (
+    input  wire        i_clk,
+    /* ... */
+);
+\end{lstlisting}
+
+The bypass enable allows the register file to enact read-before-write behavior, so that a read port can see the new value of a register on the same clock edge it is written. You have to handle both cases for full points.
+
+
+
+\subsection{Behavior}
+\begin{itemize}
+  \item \textbf{\texttt{x0} is hardwired to zero.} A write to address
+        \texttt{5'b00000} must be discarded, and a read of address
+        \texttt{5'b00000} must return \texttt{32'b0} forever after. Both
+        testbenches write \texttt{32'hDEADBEEF} to \texttt{x0} as their very
+        first check.
+  \item \textbf{Writes are synchronous}, taking effect on the rising edge of
+        \texttt{i\_clk} when \texttt{i\_rd\_wen} is high.
+  \item \textbf{Reads are combinational.} \texttt{o\_rs1\_rdata} tracks
+        \texttt{i\_rs1\_raddr} with no clock edge in between.
+  \item \textbf{Reset is synchronous and active high}, applied inside the same
+        clocked block as the write.
+  \item \textbf{Bypass}, when \texttt{BYPASS\_EN} is nonzero: if a write is in
+        flight (\texttt{i\_rd\_wen} is high) to the same register a read port
+        is addressing, and that register is not \texttt{x0}, that read port
+        returns \texttt{i\_rd\_wdata} \emph{immediately}, without waiting for
+        the clock edge. When \texttt{BYPASS\_EN} is zero the read port returns
+        the stored value, and the write is only visible after the edge.
+\end{itemize}
+
+\newpage
+
+\section{Part 4: Instruction Decoder}
+\label{sec:decoder}
+The final part has you constructing the instruction decoder. This is a
+combinational block that takes one 32-bit instruction word and produces every control signal the datapath needs.
+
+\begin{important}
+  The decoder instantiates uses generator you wrote in Section~\ref{sec:imm}. You must instantiate the imm module within your decoder.
+\end{important}
+
+\subsection{Instruction fields}
+Everything the decoder does is a function of these fields:
+
+\begin{center}
+\begin{tabular}{@{}llp{8.6cm}@{}}
+\toprule
+\textbf{Field} & \textbf{Bits} & \textbf{Use} \\
+\midrule
+\texttt{opcode} & \texttt{i\_inst[6:0]}   & Selects the instruction class. \\
+\texttt{rd}     & \texttt{i\_inst[11:7]}  & Destination register specifier. \\
+\texttt{funct3} & \texttt{i\_inst[14:12]} & Sub-operation within a class. \\
+\texttt{rs1}    & \texttt{i\_inst[19:15]} & First source register specifier. \\
+\texttt{rs2}    & \texttt{i\_inst[24:20]} & Second source register specifier. \\
+\texttt{funct7} & \texttt{i\_inst[31:25]} & Further sub-operation (add vs.\ sub, srl vs.\ sra). \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+
+\subsection{Outputs}
+\label{sec:decoder-outputs}
+
+\noindent\begin{minipage}{\linewidth}
+\textbf{Legality and halt.}.
+
+\smallskip
+
+\begin{center}
+\begin{tabular}{@{}llp{12.0cm}@{}}
+\toprule
+\textbf{Port} & \textbf{Width} & \textbf{Meaning} \\
+\midrule
+\texttt{o\_legal} & 1 & The word is a legal RV32I encoding. \\
+\texttt{o\_halt}  & 1 & The instruction is \texttt{ebreak} (\texttt{32'h00100073}). \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{minipage}
+\par\medskip
+
+\begin{important}
+\textbf{\texttt{ecall} is \emph{not} legal in this decoder.} \texttt{ebreak}
+(\texttt{32'h00100073}) is the only \textsc{system} instruction, and it is what
+drives \texttt{o\_halt}. \texttt{ecall} (\texttt{32'h00000073}) is tested in the
+\textsc{illegal} group and must produce \texttt{o\_legal = 0} and
+\texttt{o\_halt = 0}. This differs from Phase 1, where programs terminate with
+\texttt{ecall}.
+\end{important}
+
+\noindent\begin{minipage}{\linewidth}
+\textbf{Register specifiers and immediate.}
+
+\smallskip
+
+\begin{center}
+\begin{tabular}{@{}llp{12.0cm}@{}}
+\toprule
+\textbf{Port} & \textbf{Width} & \textbf{Meaning} \\
+\midrule
+\texttt{o\_rs1}       & [4:0]  & \texttt{i\_inst[19:15]}, for instructions that read \texttt{rs1}. \\
+\texttt{o\_rs2}       & [4:0]  & \texttt{i\_inst[24:20]}, for instructions that read \texttt{rs2} (\textsc{op}, \textsc{store}, \textsc{branch}). \\
+\texttt{o\_rd}        & [4:0]  & \texttt{i\_inst[11:7]} for instructions that write a register, and \textbf{\texttt{5'd0} for every instruction that does not} --- stores, branches, and any illegal word. \\
+\texttt{o\_immediate} & [31:0] & The immediate for this instruction's format (Table~\ref{tab:imm} lists the format codes). Instantiate your \texttt{imm} module here. \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{minipage}
+\par\medskip
+
+\noindent\begin{minipage}{\linewidth}
+\textbf{ALU control.}
+
+\smallskip
+
+\begin{center}
+\begin{tabular}{@{}llp{12.0cm}@{}}
+\toprule
+\textbf{Port} & \textbf{Width} & \textbf{Meaning} \\
+\midrule
+\texttt{o\_op1\_sel}     & 1     & ALU operand 1 source: \texttt{0} = \texttt{rs1}, \texttt{1} = PC. Only \texttt{auipc} selects the PC. \\
+\texttt{o\_op2\_sel}     & 1     & ALU operand 2 source: \texttt{0} = \texttt{rs2}, \texttt{1} = immediate. Set for \textsc{op-imm}, \textsc{load}, \textsc{store}, \texttt{auipc} and \texttt{jalr}. \\
+\texttt{o\_alu\_opsel}   & [2:0] & \texttt{alu}'s \texttt{i\_opsel}: \texttt{funct3} for \textsc{op} and \textsc{op-imm}, and \texttt{3'b000} (add) for everything else that uses the ALU. \\
+\texttt{o\_alu\_sub}     & 1     & \texttt{alu}'s \texttt{i\_sub}. Set \emph{only} for \texttt{sub} (\textsc{op}, \texttt{funct3} \texttt{000}, \texttt{funct7} \texttt{0100000}); clear for every address calculation. \\
+\texttt{o\_alu\_unsigned}& 1     & \texttt{alu}'s \texttt{i\_unsigned}. Set for \texttt{sltu}/\texttt{sltiu}, and equal to \texttt{funct3[1]} for branches (so \texttt{bltu}/\texttt{bgeu} set it). \\
+\texttt{o\_alu\_arith}   & 1     & \texttt{alu}'s \texttt{i\_arith}, \texttt{funct7 == 7'b0100000}, for \texttt{sra}/\texttt{srai}. \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{minipage}
+\par\medskip
+
+\noindent\begin{minipage}{\linewidth}
+\textbf{Branch and jump control.}
+
+\smallskip
+
+\begin{center}
+\begin{tabular}{@{}llp{12.0cm}@{}}
+\toprule
+\textbf{Port} & \textbf{Width} & \textbf{Meaning} \\
+\midrule
+\texttt{o\_branch}          & 1 & This is a (legal) conditional branch. \\
+\texttt{o\_jump}            & 1 & This is \texttt{jal} or \texttt{jalr}. \\
+\texttt{o\_branch\_equal}   & 1 & The branch tests equality (\texttt{beq}, \texttt{bne}) rather than ordering: \texttt{\~{}funct3[2]}. \\
+\texttt{o\_branch\_unsigned}& 1 & The ordering comparison is unsigned (\texttt{bltu}, \texttt{bgeu}): \texttt{funct3[1]}. \\
+\texttt{o\_branch\_invert}  & 1 & Take the branch on the \emph{negation} of the test (\texttt{bne}, \texttt{bge}, \texttt{bgeu}): \texttt{funct3[0]}. \\
+\texttt{o\_pc\_sel}         & 1 & Target base: \texttt{0} = PC (branches, \texttt{jal}), \texttt{1} = \texttt{rs1} (\texttt{jalr}). \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{minipage}
+\par\medskip
+
+\noindent\begin{minipage}{\linewidth}
+\textbf{Data-memory control.}
+
+\smallskip
+
+\begin{center}
+\begin{tabular}{@{}llp{13.0cm}@{}}
+\toprule
+\textbf{Port} & \textbf{Width} & \textbf{Meaning} \\
+\midrule
+\texttt{o\_dmem\_ren}   & 1     & This is a load. \\
+\texttt{o\_dmem\_wen}   & 1     & This is a store. \\
+\texttt{o\_dmem\_align} & [1:0] & Alignment mask of the access: \texttt{2'b00} byte, \texttt{2'b01} half-word, \texttt{2'b11} word. \\
+\texttt{o\_dmem\_memb}  & 1     & Byte access (\texttt{lb}, \texttt{lbu}, \texttt{sb}). \\
+\texttt{o\_dmem\_memh}  & 1     & Half-word access (\texttt{lh}, \texttt{lhu}, \texttt{sh}). \\
+\texttt{o\_dmem\_memw}  & 1     & Word access (\texttt{lw}, \texttt{sw}). \\
+\texttt{o\_dmem\_memu}  & 1     & The loaded value is \emph{zero}-extended rather than sign-extended (\texttt{lbu}, \texttt{lhu}). \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{minipage}
+\par\medskip
+
+\textbf{Writeback select.} \texttt{o\_rd\_sel [3:0]} is \textbf{one-hot} and
+chooses what gets written to \texttt{rd}:
+
+\begin{center}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Bit} & \textbf{Value} & \textbf{Source} & \textbf{Instructions} \\
+\midrule
+{}[0] & \texttt{4'b0001} & ALU result & \textsc{op}, \textsc{op-imm}, \texttt{auipc} \\
+{}[1] & \texttt{4'b0010} & immediate  & \texttt{lui} \\
+{}[2] & \texttt{4'b0100} & PC + 4     & \texttt{jal}, \texttt{jalr} \\
+{}[3] & \texttt{4'b1000} & memory     & \textsc{load} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+
+
+\newpage
+
+\section{Testing Your Work}
+\label{sec:testing}
+\textbf{There is no autograder in this repository.} Verifying that
+\texttt{alu.v}, \texttt{imm.v}, \texttt{rf.v} and \texttt{decoder.v} behave
+correctly is part of the assignment.
+
+\subsection{The example}
+\texttt{phase\_2/example/} holds two files:
+
+\begin{itemize}
+\item \texttt{opmux.v} --- a small combinational module with four inputs
+  (\texttt{i\_a}, \texttt{i\_b}, \texttt{i\_sel}, \texttt{i\_en}) and two
+  outputs (\texttt{o\_result}, \texttt{o\_zero}). A two-bit select mux chooses
+  between \texttt{+}, \texttt{-}, \texttt{<<} and \texttt{>>}.
+\item \texttt{opmux\_tb.v} --- a self-checking testbench for it. It is commented as a walkthrough to help you build your own test benches.
+\end{itemize}
+
+Run it with \texttt{./phase\_2/run\_example.sh}, which prints the two commands
+it uses so you can run them on your own modules:
+
+\begin{lstlisting}[language={}]
+$ iverilog -s opmux_tb -o build/sim example/opmux_tb.v example/opmux.v
+$ ./build/sim
+
+========== opmux testbench ==========
+--- add ---
+[PASS] add: 7 + 9
+[PASS] add: 0 + 0 sets zero
+...
+212 passed, 0 failed
+ALL TESTS PASSED
+\end{lstlisting}
+
+\texttt{-s} names the top module to elaborate, \texttt{-o} names the simulator
+to write, and every source file the design needs is listed after them.
+
+\begin{important}
+\textbf{An expected value copied out of your design proves only that the
+design agrees with itself.} Make sure to fully test all edge cases of your own design.
+\end{important}
+
+\end{document}
