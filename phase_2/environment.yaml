@@ -5,6 +5,6 @@ channels:
 dependencies:
   - python
   - pip
-  - gtkwave
-  - iverilog
+  - conda-forge::gtkwave
+  - conda-forge::iverilog
 prefix: /home/gensis2/miniconda3/envs/eel4768_project
