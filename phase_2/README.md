@@ -26,7 +26,7 @@ Once you have conda, follow the instructions below.
 
 ```
 git clone https://github.com/UnaryLab/EEL4768_RISC-V_Project
-
+cd EEL4768_RISC-V_Project/phase_2/
 conda env create -f environment.yaml
 ```
 Then, you can activate the conda environment
