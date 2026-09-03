@@ -35,6 +35,12 @@ conda activate eel4768_phase_2
 ```
 You need to reactivate or make sure you are in this conda env before running the test script everytime.
 
+### Windows
+
+Icarus and GTK cannot be directly installed through conda. If you have a windows system, I recommend either using [wsl](https://learn.microsoft.com/en-us/windows/wsl/install) (Windows subsystem for linux), or you can use the [eustis server](https://www.youtube.com/watch?v=KGm5RdI_gNA).
+
+Both of these solutions will run a linux operating system. If you have issues, please come to my office hours.
+
 # Testing your work
 
 **There is no autograder in this repository.** Verifying that your `alu.v`,
@@ -58,8 +64,8 @@ Follow the example testbench outlined in `phase_2/example/` to understand how to
 To run the example testbench, follow the script below. To run your own verilog file and testbench, just replace the paths for the testbench and target file.
 
 ```
-$ iverilog -s opmux_tb -o sim example/opmux_tb.v example/opmux.v
-$ ./sim
+iverilog -s opmux_tb -o sim example/opmux_tb.v example/opmux.v
+./sim
 ```
 
 `-s` names the top module to elaborate, `-o` names the simulator to write, and
