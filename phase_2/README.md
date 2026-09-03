@@ -28,8 +28,12 @@ Once you have conda, follow the instructions below.
 git clone https://github.com/UnaryLab/EEL4768_RISC-V_Project
 cd phase_2
 conda create conda env create -f environment.yml
+```
+Then, you can activate the conda environment
+```
 conda activate eel4768_phase_2
 ```
+You need to reactivate or make sure you are in this conda env before running the test script everytime.
 
 # Testing your work
 
