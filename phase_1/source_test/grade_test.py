@@ -135,13 +135,26 @@ def check_assembly(program, submission_dir, output_dir):
         return False, ("no memory dump (no Mem[%s] line): the program did not "
                        "assemble, or crashed" % start)
 
-    expected = expected_dump_lines(config.expected_assembly_path(program))
-    if got != expected:
-        return False, ("result memory differs from the expected %s-%s "
-                       "(%d of %d line(s))"
-                       % (start, end, count_differences(got, expected),
-                          len(expected)))
-    return True, ""
+    # A program can have more than one accepted answer -- see config.py's
+    # EXPECTED_ASSEMBLY_VARIANTS. Matching any one of them passes.
+    accepted = [expected_dump_lines(path)
+                for path in config.expected_assembly_paths(program)
+                if os.path.isfile(path)]
+    if not accepted:
+        return False, ("no expected output on file for %s under configuration "
+                       "%d" % (program, config.CONFIG))
+    if any(got == expected for expected in accepted):
+        return True, ""
+
+    # Report against the nearest accepted answer; the others say nothing about
+    # how close this run came.
+    nearest = min(accepted, key=lambda expected: count_differences(got, expected))
+    alternatives = ("" if len(accepted) == 1
+                    else " (nearest of %d accepted answers)" % len(accepted))
+    return False, ("result memory differs from the expected %s-%s "
+                   "(%d of %d line(s))%s"
+                   % (start, end, count_differences(got, nearest),
+                      len(nearest), alternatives))
 
 
 def check_assembler(name, assembler_py, output_dir):

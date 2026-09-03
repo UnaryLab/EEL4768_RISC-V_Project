@@ -16,6 +16,9 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /work
+# The checker, the RARS jar, the configuration .data blocks and the expected
+# outputs (including sobel's two accepted answers) are all baked in here, so
+# the image has to be rebuilt after every update to this repository.
 COPY . /work/
 
 # run_test.sh writes results/ and output/ under /work, so the tree has to be

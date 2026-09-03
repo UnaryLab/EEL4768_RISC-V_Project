@@ -39,6 +39,21 @@ RARS_RANGES = {
     "sobel": ("0x100100ac", "0x100100cc"),
 }
 
+# Programs with more than one accepted answer, as the filename suffixes that
+# follow "<program>_cfg<N>" in expected/assembly/<program>/. A run matching ANY
+# one of them passes. A program absent from this table has the single
+# unsuffixed file, "<program>_cfg<N>.txt".
+#
+# sobel has two, because the assignment as it went out left its final step
+# ambiguous. Both are computed from the same configs/sobel/1.data:
+#   _correct  the handout's combining step, C = gx + gy
+#   _exp      the squared magnitude, C = gx^2 + gy^2, which is what the
+#             expected output originally shipped to students was generated from
+# Neither can be called wrong from a student's side, so both are credited.
+EXPECTED_ASSEMBLY_VARIANTS = {
+    "sobel": ["_correct", "_exp"],
+}
+
 # The four files the student's assembler must produce, as
 # (label, generated filename, expected filename). The generated names carry no
 # configuration infix: the assembler is handed <name>.s and always writes
@@ -86,9 +101,16 @@ def reference_program_path(name):
     return os.path.join(TESTS_DIR, name + ".s")
 
 
-def expected_assembly_path(program):
-    return os.path.join(EXPECTED_ASSEMBLY_DIR, program,
-                        "%s_cfg%d.txt" % (program, CONFIG))
+def expected_assembly_paths(program):
+    """Every expected-output file accepted for a program, preferred one first.
+
+    Usually a one-element list; a program in EXPECTED_ASSEMBLY_VARIANTS has one
+    entry per accepted answer.
+    """
+    suffixes = EXPECTED_ASSEMBLY_VARIANTS.get(program, [""])
+    return [os.path.join(EXPECTED_ASSEMBLY_DIR, program,
+                         "%s_cfg%d%s.txt" % (program, CONFIG, suffix))
+            for suffix in suffixes]
 
 
 def expected_assembler_path(name, sol_pattern):

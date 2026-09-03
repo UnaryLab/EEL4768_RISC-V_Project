@@ -33,16 +33,17 @@ phase_1/submission/
 
 ## Run it with Docker
 
-Build once only the first time:
+Build the image once, and rebuild it whenever you pull an update to this
+repository -- the checker and the expected outputs are baked into the image:
 
 ```
 docker build -t phase1-check phase_1
 ```
 
-Then run after first build or after editing:
+Then run it after every edit to your files:
 
 ```
-docker run --rm -v "$PWD/phase_1/submission:/work/submission" phase_1-check:latest
+docker run --rm -v "$PWD/phase_1/submission:/work/submission" phase1-check:latest
 ```
 
 ## Run it without Docker
@@ -64,12 +65,24 @@ One line per check, then a total:
 PASS  Assembly:  gemm (config 1)
 FAIL  Assembly:  mult (config 1)  --  result memory differs from the expected ...
 ...
-8/9 PASS
+5/6 PASS
 ```
 
-A FAIL line ends with the reason. The command exits 0 only when all nine pass.
+A FAIL line ends with the reason. The command exits 0 only when all six pass.
 
 Outside Docker, the summary is also written to `phase_1/results/<name>.txt`, and
 what each check produced -- the program it ran, the RARS memory dump, and the
 files your assembler generated -- is left in `phase_1/output/` for you to
 inspect.
+
+## Sobel: two accepted answers
+
+The handout left the last step of the Sobel filter ambiguous, so **both**
+readings pass the `sobel` check:
+
+- `c[i][j] = gx[i][j] + gy[i][j]`, the sum the handout writes out, and
+- `c[i][j] = gx[i][j]^2 + gy[i][j]^2`, the squared gradient magnitude.
+
+Either way, use the kernel values from the `.data` section exactly as given.
+A FAIL line for `sobel` is measured against whichever of the two your output
+came closer to.
