@@ -234,7 +234,7 @@ No \texttt{`include}
 
 \section{Part 1: ALU}
 \label{sec:alu}
-For the first part, you will be tasked with designing a 32-bit ALU following the RISC-V instruction set. This is a purely combinational ALU. Each ALU operation should be implemented manually. You cannot use +, -, <<, >>, or any other arithmetic operations inplace of the ALU operations. Follow the table below for how to implement each operation.
+For the first part, you will be tasked with designing a 32-bit ALU following the RISC-V instruction set. This is a purely combinational ALU. Each ALU operation should be implemented manually. You cannot use +, -, \textless\textless, \textgreater\textgreater, or any other arithmetic operations inplace of the ALU operations. Follow the table below for how to implement each operation.
 
 \begin{center}
   \begin{tabular}{@{}lp{7.8cm}@{}}
@@ -556,7 +556,7 @@ chooses what gets written to \texttt{rd}:
 \label{sec:testing}
 \textbf{There is no autograder in this repository.} Verifying that
 \texttt{alu.v}, \texttt{imm.v}, \texttt{rf.v} and \texttt{decoder.v} behave
-correctly is part of the assignment.
+correctly is part of the assignment. There are provided trace files that you can use to validate your designs, but must write the test harnesses yourself. The provided trace files can be found in \texttt{phase\_2/traces/}.
 
 \subsection{The example}
 \texttt{phase\_2/example/} holds two files:
