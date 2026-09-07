@@ -2,7 +2,23 @@
 phase_1/results/
 phase_1/output/
 
+# phase_2 has no local checker: the example's build artifacts, and the grading
+# harness itself, which must never reach a student checkout.
+phase_2/example/build/
+phase_2/grader/
+
+# LaTeX build byproducts; only the .tex and the .pdf are worth shipping.
+*.aux
+*.fdb_latexmk
+*.fls
+*.out
+*.synctex.gz
+**/documentation/*.log
+
 __pycache__/
 *.pyc
 .claude
-phase_1/submission/
+**/submission/*
+
+sim
+*.vcd
