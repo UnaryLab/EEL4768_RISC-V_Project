@@ -20,9 +20,6 @@ module alu (
     // This is only used for `i_opsel == 3'b000` (addition/subtraction).
     input  wire        i_sub,
     // When asserted, comparison operations should be treated as unsigned.
-    // This is only used for branch comparisons, as the set less than unsigned
-    // mode is already specified by `i_opsel`. For branch operations, the ALU
-    // result is not used, only the comparison results.
     input  wire        i_unsigned,
     // When asserted, right shifts should be treated as arithmetic instead of
     // logical. This is only used for `i_opsel == 3'b101` (shift right).
