@@ -1,0 +1,10 @@
+name: eel4768_phase_6
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - conda-forge::gtkwave
+  - conda-forge::iverilog
+prefix: /home/gensis2/miniconda3/envs/eel4768_project
